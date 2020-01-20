@@ -1,6 +1,8 @@
 import os
 import glob
 import subprocess
+import csv
+import sys
 
 """
 Train on Custom Dataset
@@ -36,7 +38,8 @@ Add --pretrained_weights weights/darknet53.conv.74 to train using a backend pret
 
 
 """
-raw_files = "/home/stuart/Dropbox/_Microwork/30sec_detection"
+video_files = "/home/stuart/Dropbox/_Microwork/30sec_detection"
+annotation_files = "/home/stuart/Dropbox/_Microwork/Annotations"
 
 
 partition = {'train': ['1_hockey_1', '3_hockey_3', '4_hockey_4', '5_hockey_5', '6_hockey_6', '7_hockey_7', '8_hockey_8',
@@ -61,9 +64,58 @@ partition = {'train': ['1_hockey_1', '3_hockey_3', '4_hockey_4', '5_hockey_5', '
 
 for f in partition['train']:
 	_export = "./images"
-	_video = f"{raw_files}/{f}.mp4"
+	_video = f"{video_files}/{f}.mp4"
+	_thruth = f"{annotation_files}/{f}.csv"
 	print(_video)
+	print(_thruth)
 	assert os.path.exists(_video), _video
+	assert os.path.exists(_thruth), _thruth
+
+	# Read all of the ground truth data for this file.
+	# Open predictions and convert to the JSON format we've adopted.
+	with open(_thruth, 'rt') as g:
+		reader = csv.reader(g, delimiter=',', quotechar='"')
+		sortedlist = sorted(reader, key=lambda _row: _row[4], reverse=False)
+		_current_frame = 1
+		_frame_labels = []
+		_last_valid_frame_number = 0
+		_is_new_frame_number = True
+		json_frames = {"frames": [], "class": "video", "filename": _thruth}
+
+		frame = {'timestamp': 0, 'num': 0, "class": "frame", "annotations": []}
+
+		for row in sortedlist:
+			if not row[0] == '#':
+				_t = int(row[4].rsplit('.', 1)[0])
+				print(_t)
+				if _t > _last_valid_frame_number:
+					# New frame
+					_last_valid_frame_number = _t
+					_is_new_frame_number = True
+
+					if len(frame["annotations"]) > 0:
+						json_frames["frames"].append(frame)
+
+					# Create frame stub
+					frame = {'timestamp': float(_t / 25.), 'num': _t, "class": "frame", "annotations": []}
+
+				_top = int(row[9])
+				_left = int(row[10])
+				_width = int(row[11])
+				_height = int(row[12])
+				_bbox = [_left, _top, _width, _height]
+
+				new_annotation = {
+					"dco": False,		# Not required for hypotheses..
+					"height": _height,
+					"width": _width,
+					"id": row[2],
+					"y": _top - _height / 2,
+					"x": _left - _width / 2
+				}
+
+				frame["annotations"].append(new_annotation)
+
 	subprocess.call('ffmpeg -i {0} -vf fps=25 {1}/{2}_%04d.png'.format(_video, _export, f), shell=True)
 
 	for img in glob.glob('{0}/{1}*.png'.format(_export, f)):
@@ -75,6 +127,8 @@ for f in partition['train']:
 			myfile.write("data/custom/images/{0}\n".format(os.path.basename(img)))
 
 		with open("./labels/{0}.txt".format(_image_name), "a") as myfile:
+			# TODO get matching frame rows and append to text file.
 			myfile.write("Hello")
+
 
 	break
