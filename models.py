@@ -66,6 +66,7 @@ def create_modules(module_defs):
             modules.add_module(f"shortcut_{module_i}", EmptyLayer())
 
         elif module_def["type"] == "yolo":
+            print(module_def)
             anchor_idxs = [int(x) for x in module_def["mask"].split(",")]
             # Extract anchors
             anchors = [int(x) for x in module_def["anchors"].split(",")]
