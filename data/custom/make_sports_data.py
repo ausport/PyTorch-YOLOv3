@@ -55,58 +55,78 @@ partition = {'train': ['1_hockey_1', '3_hockey_3', '4_hockey_4', '5_hockey_5', '
                        '87_cricket_3', '90_hockey_24', '91_hockey_25', '92_hockey_26', '94_hockey_28', '95_hockey_29', '96_hockey_30', '97_hockey_31',
                        '98_hockey_32', '99_hockey_33'],
 
-             'test': ['0_hockey_0', '2_hockey_2', '10_hockey_10', '25_netball_12', '29_netball_16', '30_netball_17',
+             'valid': ['2_hockey_2', '10_hockey_10', '25_netball_12', '29_netball_16', '30_netball_17',
                       '32_afl_1', '38_bball_1', '40_tennis_1', '46_rugby_1', '57_soccer_1', '62_rugby_5', '69_rugby_12',
                       '72_hockey_16', '77_hockey_22', '88_cricket_4', '89_hockey_23', '93_hockey_27', '100_hockey_34'],
 
              'hold': ['9_hockey_9', '44_hockey_1', '45_hockey_1', '86_beach_6']}  # Hold out portrait samples for now.
 
+# Start fresh
+_export = "./images"
+for f in glob.glob("./images/*.png"):
+    os.remove(f)
+for f in glob.glob("./labels/*.txt"):
+    os.remove(f)
 
-for f in partition['train']:
-	_export = "./images"
-	_video = f"{video_files}/{f}.mp4"
-	_thruth = f"{annotation_files}/{f}.csv"
+for mode in ('train', 'valid'):
 
-	assert os.path.exists(_video), _video
-	assert os.path.exists(_thruth), _thruth
+	for f in partition[mode]:
 
-	# Read all of the ground truth data for this file.
-	# Open predictions and convert to the JSON format we've adopted.
-	with open(_thruth, 'rt') as g:
-		reader = csv.reader(g, delimiter=',', quotechar='"')
-		sortedlist = sorted(reader, key=lambda _row: _row[4], reverse=False)
+		_video = f"{video_files}/{f}.mp4"
+		_thruth = f"{annotation_files}/{f}.csv"
 		_frames = []
 
-		for row in sortedlist:
-			if not row[0] == '#':
-				_t = int(row[4].rsplit('.', 1)[0])
+		assert os.path.exists(_video), _video
+		assert os.path.exists(_thruth), _thruth
 
-				_top = float(row[9]) / h
-				_left = float(row[10]) / w
-				_width = float(row[11]) / w
-				_height = float(row[12]) / h
+		# Read all of the ground truth data for this file.
+		# Open predictions and convert to the JSON format we've adopted.
+		with open(_thruth, 'rt') as g:
+			print("Reading {0}".format(_thruth))
+			reader = csv.reader(g, delimiter=',', quotechar='"')
+			sortedlist = sorted(reader, key=lambda _row: _row[4], reverse=False)
 
-				_frames.append({
-					"frame": _t,
-					"height": _height,
-					"width": _width,
-					"y": _top - _height / 2,
-					"x": _left - _width / 2})
+			for row in sortedlist:
+				if not row[0] == '#':
+					_t = int(row[4].rsplit('.', 1)[0])
 
-	subprocess.call('ffmpeg -i {0} -vf fps=25 {1}/{2}_%04d.png'.format(_video, _export, f), shell=True)
+					_top = float(row[9])
+					_left = float(row[10])
+					_width = float(row[11])
+					_height = float(row[12])
 
-	for img in glob.glob('{0}/{1}*.png'.format(_export, f)):
-		print(os.path.basename(img))
-		_image_path = os.path.basename(img)
-		_image_name = os.path.splitext(_image_path)[0]
+					print("\tFrame = {0} --> x: {1}, y: {2}, w: {3}, h: {4}".format(_t, _left, _top, _width, _height))
+					# Normalised centers
+					_y = _top + (_height / 2)
+					_x = _left + (_width / 2)
 
-		with open("train.txt", "a") as myfile:
-			myfile.write("data/custom/images/{0}\n".format(os.path.basename(img)))
+					assert _y > 0, "negative bounding box (y)"
+					assert _x > 0, "negative bounding box (x)"
 
-		with open("./labels/{0}.txt".format(_image_name), "a") as myfile:
-			_fnum = int(_image_name.split("_")[-1].split(".")[0])
-			for k in (index for (index, d) in enumerate(_frames) if d["frame"] == _fnum):
-				print(_frames[k])
-				# label_idx x_center y_center width height
-				myfile.write("{0} {1} {2} {3} {4}\n".format(0, _frames[k]['x'], _frames[k]['y'], _frames[k]['width'], _frames[k]['height']))
+					_frames.append({
+						"frame": _t,
+						"height": _height / h,
+						"width": _width / w,
+						"y": _y / h,
+						"x": _x / w})
+
+		subprocess.call('ffmpeg -i {0} -vf fps=25 {1}/{2}_%04d.png'.format(_video, _export, f), shell=True)
+
+		for img in glob.glob('{0}/{1}*.png'.format(_export, f)):
+			print(os.path.basename(img))
+			_image_path = os.path.basename(img)
+			_image_name = os.path.splitext(_image_path)[0]
+
+			with open("{0}.txt".format(mode), "a") as myfile:
+				myfile.write("data/custom/images/{0}\n".format(os.path.basename(img)))
+
+			with open("./labels/{0}.txt".format(_image_name), "a") as myfile:
+				_fnum = int(_image_name.split("_")[-1].split(".")[0])
+				print("Searching for frame number {0}".format(_fnum))
+				for k in (index for (index, d) in enumerate(_frames) if d["frame"] == _fnum):
+					print(_frames[k])
+					# label_idx x_center y_center width height
+					myfile.write("{0} {1} {2} {3} {4}\n".format(0, _frames[k]['x'], _frames[k]['y'], _frames[k]['width'], _frames[k]['height']))
+
+		break
 
