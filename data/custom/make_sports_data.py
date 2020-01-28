@@ -128,5 +128,4 @@ for mode in ('train', 'valid'):
 					# label_idx x_center y_center width height
 					myfile.write("{0} {1} {2} {3} {4}\n".format(0, _frames[k]['x'], _frames[k]['y'], _frames[k]['width'], _frames[k]['height']))
 
-		break
 
